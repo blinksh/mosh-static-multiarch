@@ -1,19 +1,24 @@
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 name: Auto-Build
 env:
-  MOSH_TAG: 1.4.0+blink-17.3.0
+  MOSH_TAG: 1.4.0+blink-18.4.5
 jobs:
   macports-cache:
-    runs-on: macos-12
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v3
       
       - name: Install gtar sudo wrapper
         run: | 
-          sudo mv /usr/local/bin/gtar /usr/local/bin/gtar.orig
-          sudo cp macOS/gtar /usr/local/bin/gtar
-          sudo chmod +x /usr/local/bin/gtar
+          if [ -e /opt/homebrew/bin/gtar ]; then
+            sudo mv /opt/homebrew/bin/gtar /opt/homebrew/bin/gtar.orig
+          fi
+          sudo cp macOS/gtar /opt/homebrew/bin/gtar
+          sudo chmod +x /opt/homebrew/bin/gtar
 
       - name: Cache macports
         id: cache-macports
@@ -31,13 +36,13 @@ jobs:
       - name: Setup macports dependencies
         if: steps.cache-macports.outputs.cache-hit != 'true'
         run: | 
-          curl -L "https://github.com/macports/macports-base/releases/download/v2.8.1/MacPorts-2.8.1-12-Monterey.pkg" --output macports.pkg
+          curl -L "https://github.com/macports/macports-base/releases/download/v2.12.3/MacPorts-2.12.3-14-Sonoma.pkg" --output macports.pkg
           sudo installer -pkg macports.pkg -target /
           chmod +x macOS/port-deps.sh && ./macOS/port-deps.sh
   
   linux-build:
     name: Linux Build
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
 
     strategy:
       matrix:
@@ -67,13 +72,13 @@ jobs:
           mv mosh/src/frontend/mosh-server mosh/src/frontend/mosh-server-$MOSH_TAG-linux-${{ matrix.architecture }}
           mv mosh/src/frontend/mosh-client mosh/src/frontend/mosh-client-$MOSH_TAG-linux-${{ matrix.architecture }}
       
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: mosh-server-${{ env.MOSH_TAG }}-linux-${{ matrix.architecture }}
           path: mosh/src/frontend/mosh-server-${{ env.MOSH_TAG }}-linux-${{ matrix.architecture }}
           if-no-files-found: error
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: mosh-client-${{ env.MOSH_TAG }}-linux-${{ matrix.architecture }}
           path: mosh/src/frontend/mosh-client-${{ env.MOSH_TAG }}-linux-${{ matrix.architecture }}
@@ -82,17 +87,19 @@ jobs:
   macos-build:
     name: macOS Build (x86_64, arm64)
     needs: macports-cache
-    runs-on: macos-12
+    runs-on: macos-14
 
     steps:
       - name: Checkout
         uses: actions/checkout@v3
       
       - name: Install gtar sudo wrapper
-        run: | 
-          sudo mv /usr/local/bin/gtar /usr/local/bin/gtar.orig
-          sudo cp macOS/gtar /usr/local/bin/gtar
-          sudo chmod +x /usr/local/bin/gtar
+        run: |
+          if [ -e /opt/homebrew/bin/gtar ]; then
+            sudo mv /opt/homebrew/bin/gtar /opt/homebrew/bin/gtar.orig
+          fi
+          sudo cp macOS/gtar /opt/homebrew/bin/gtar
+          sudo chmod +x /opt/homebrew/bin/gtar
 
       - name: Restore macports cache
         id: cache-macports
@@ -117,22 +124,22 @@ jobs:
           env MOSH_TAG=$MOSH_TAG ZERO_AR_DATE=1 MACOSX_DEPLOYMENT_TARGET=11.0 PATH=/opt/local/bin:$PATH ./build.sh
         working-directory: ./macOS
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: mosh-client-${{ env.MOSH_TAG }}-darwin-x86_64
           path: ./macOS/prefix_x86_64/local/bin/mosh-client-${{ env.MOSH_TAG }}-darwin-x86_64
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: mosh-server-${{ env.MOSH_TAG }}-darwin-x86_64
           path: ./macOS/prefix_x86_64/local/bin/mosh-server-${{ env.MOSH_TAG }}-darwin-x86_64
       
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: mosh-client-${{ env.MOSH_TAG }}-darwin-arm64
           path: ./macOS/prefix_arm64/local/bin/mosh-client-${{ env.MOSH_TAG }}-darwin-arm64
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: mosh-server-${{ env.MOSH_TAG }}-darwin-arm64
           path: ./macOS/prefix_arm64/local/bin/mosh-server-${{ env.MOSH_TAG }}-darwin-arm64
@@ -142,12 +149,12 @@ jobs:
   release:
     name: Release
     needs: [linux-build, macos-build]
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
 
       - name: Download artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
       
       - name: Create release description
         run: |
@@ -196,7 +203,7 @@ jobs:
           ) | tee release.md
       
       - id: upload_artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: release.md
           path: release.md
